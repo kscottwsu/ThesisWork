@@ -1,0 +1,404 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>FuelCell</title><meta name="generator" content="MATLAB 9.2"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2018-06-19"><meta name="DC.source" content="FuelCell.m"><style type="text/css">
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,font,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td{margin:0;padding:0;border:0;outline:0;font-size:100%;vertical-align:baseline;background:transparent}body{line-height:1}ol,ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:'';content:none}:focus{outine:0}ins{text-decoration:none}del{text-decoration:line-through}table{border-collapse:collapse;border-spacing:0}
+
+html { min-height:100%; margin-bottom:1px; }
+html body { height:100%; margin:0px; font-family:Arial, Helvetica, sans-serif; font-size:10px; color:#000; line-height:140%; background:#fff none; overflow-y:scroll; }
+html body td { vertical-align:top; text-align:left; }
+
+h1 { padding:0px; margin:0px 0px 25px; font-family:Arial, Helvetica, sans-serif; font-size:1.5em; color:#d55000; line-height:100%; font-weight:normal; }
+h2 { padding:0px; margin:0px 0px 8px; font-family:Arial, Helvetica, sans-serif; font-size:1.2em; color:#000; font-weight:bold; line-height:140%; border-bottom:1px solid #d6d4d4; display:block; }
+h3 { padding:0px; margin:0px 0px 5px; font-family:Arial, Helvetica, sans-serif; font-size:1.1em; color:#000; font-weight:bold; line-height:140%; }
+
+a { color:#005fce; text-decoration:none; }
+a:hover { color:#005fce; text-decoration:underline; }
+a:visited { color:#004aa0; text-decoration:none; }
+
+p { padding:0px; margin:0px 0px 20px; }
+img { padding:0px; margin:0px 0px 20px; border:none; }
+p img, pre img, tt img, li img, h1 img, h2 img { margin-bottom:0px; } 
+
+ul { padding:0px; margin:0px 0px 20px 23px; list-style:square; }
+ul li { padding:0px; margin:0px 0px 7px 0px; }
+ul li ul { padding:5px 0px 0px; margin:0px 0px 7px 23px; }
+ul li ol li { list-style:decimal; }
+ol { padding:0px; margin:0px 0px 20px 0px; list-style:decimal; }
+ol li { padding:0px; margin:0px 0px 7px 23px; list-style-type:decimal; }
+ol li ol { padding:5px 0px 0px; margin:0px 0px 7px 0px; }
+ol li ol li { list-style-type:lower-alpha; }
+ol li ul { padding-top:7px; }
+ol li ul li { list-style:square; }
+
+.content { font-size:1.2em; line-height:140%; padding: 20px; }
+
+pre, code { font-size:12px; }
+tt { font-size: 1.2em; }
+pre { margin:0px 0px 20px; }
+pre.codeinput { padding:10px; border:1px solid #d3d3d3; background:#f7f7f7; }
+pre.codeoutput { padding:10px 11px; margin:0px 0px 20px; color:#4c4c4c; }
+pre.error { color:red; }
+
+@media print { pre.codeinput, pre.codeoutput { word-wrap:break-word; width:100%; } }
+
+span.keyword { color:#0000FF }
+span.comment { color:#228B22 }
+span.string { color:#A020F0 }
+span.untermstring { color:#B20000 }
+span.syscmd { color:#B28C00 }
+
+.footer { width:auto; padding:10px 0px; margin:25px 0px 0px; border-top:1px dotted #878787; font-size:0.8em; line-height:140%; font-style:italic; color:#878787; text-align:left; float:none; }
+.footer p { margin:0px; }
+.footer a { color:#878787; }
+.footer a:hover { color:#878787; text-decoration:underline; }
+.footer a:visited { color:#878787; }
+
+table th { padding:7px 5px; text-align:left; vertical-align:middle; border: 1px solid #d6d4d4; font-weight:bold; }
+table td { padding:7px 5px; text-align:left; vertical-align:top; border:1px solid #d6d4d4; }
+
+
+
+
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="keyword">function</span> [ Flow,Oxy,PFuelCell, QFuelCell, Vfc, J,CellEff,OxiEff,ErrorFlag ] = FuelCell( Flow, P,FuelUtilization,bDisp)
+Ru = 8.3145;
+F = 96485.332;<span class="comment">%faraday constant C/mol</span>
+ASR = 0.21 + 0.1;<span class="comment">%account for resistance increases from stack</span>
+Hchannel = 1e-3;
+Thickness = 50e-6;
+
+
+[Flow] = FuelCellInitialize(Flow);
+
+J = (Flow.CH4*4+Flow.CO+Flow.H2)*FuelUtilization*2*F;
+Oxy.T = Flow.T;
+Oxy.O2 = J/(4*F);<span class="comment">%1 O for each H2 molecule, 2O per O2, 2 e- per O.</span>
+
+n = 100;
+T = Flow.T;
+Flow.T = 298;
+h1 = enthalpy(Flow);
+Flow.T = T;
+
+[Flow,Qindirect] = ChemicalEquilibrium(Flow,P/100);
+
+i = J*ones(1,n)/n;<span class="comment">%total current in each differential area</span>
+
+ErrorFlag = 0;
+check = 0;
+count = 0;
+<span class="keyword">while</span> check == 0
+    Flow2 = Flow;
+    count = count + 1;
+    <span class="keyword">for</span> k = 1:n
+        H2(k) = Flow2.H2;
+        H2O(k) = Flow2.H2O;
+        CO(k) = Flow2.CO;
+        CO2(k) = Flow2.CO2;
+        CH4(k) = Flow2.CH4;
+        C(k) = Flow2.C;
+        [D] = DiffusionCoefficient(Flow2,P);
+
+        X.H2 = Flow2.H2/NetFlow(Flow2);
+        X.H2O = Flow2.H2O/NetFlow(Flow2);
+        X.O2 = 1;
+        X.T = Flow2.T;
+
+        [E0,VNernst] = NernstVoltage(X,P);
+
+        CurrentDensity = i(k)*n;
+
+
+        Xs.H2 = X.H2 - Ru*Flow.T*10^4*CurrentDensity*Hchannel/(8*F*(1000*P)*D.H2);
+        Xs.H2O = X.H2O + Ru*Flow.T*10^4*CurrentDensity*Hchannel/(8*F*(1000*P)*D.H2O);
+        Xs.O2 = 1 - Ru*Flow.T*10^4*CurrentDensity*Hchannel/(8*F*(1000*P)*D.O2);
+
+        Xtpb.H2 = Xs.H2 - Ru*Flow.T*10^4*CurrentDensity*Thickness/(2*F*(1000*P)*D.H2Eff);
+        Xtpb.H2O = Xs.H2O + Ru*Flow.T*10^4*CurrentDensity*Thickness/(2*F*(1000*P)*D.H2OEff);
+        Xtpb.O2 = Xs.O2 - Ru*Flow.T*10^4*CurrentDensity*Thickness/(4*F*(1000*P)*D.O2Eff);
+
+        VDiffusionAnode = -(Ru*Flow.T/(2*F))*log((X.H2O*Xtpb.H2)/(Xtpb.H2O*X.H2));
+        VDiffusionCathode = (Ru*Flow.T/(2*F))*log(X.O2/Xtpb.O2);
+        Vdiff(k) = VDiffusionAnode+VDiffusionCathode;
+        VOhm = CurrentDensity*ASR;
+
+        Flow2.H2 = Flow2.H2 - i(k)/(2*F);
+        Flow2.H2O = Flow2.H2O + i(k)/(2*F);
+        [Flow2,Qdirect(k)] = ChemicalEquilibrium(Flow2,P/100);
+
+        Voltage(k) = E0 + VNernst - VOhm - VDiffusionAnode - VDiffusionCathode;
+    <span class="keyword">end</span>
+    error = (Voltage - mean(Voltage))/(ASR);
+    i = i.*(1+error);
+    i = i*(J/sum(i));
+    <span class="keyword">if</span> max(abs(Voltage-mean(Voltage)))&lt;1e-5 || count &gt; 10000
+        check = 1;
+        <span class="keyword">if</span> max(abs(Voltage-mean(Voltage)))&gt;1e-5
+            ErrorFlag = 1;
+        <span class="keyword">end</span>
+    <span class="keyword">end</span>
+    <span class="keyword">if</span> isnan(Voltage(1))
+        ErrorFlag = 1;
+        check = 1;
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+Vfc = mean(Voltage);
+
+h = enthalpy(298);
+hrxn1 = h.H2O-h.H2-h.O2/2; <span class="comment">%H2 + O2/2 --&gt;  H2O, ion transfer</span>
+hrxn2 = h.CO2+h.H2-h.CO-h.H2O; <span class="comment">%CO + H20 --&gt; CO2 + H2, Water Gas Shift</span>
+hrxn3 = 3*h.H2+h.CO-h.CH4-h.H2O; <span class="comment">%CH4+H2O --&gt; CO + 3H2, Methane reforming</span>
+
+RFC = J/(2*F);
+QOxidation = -RFC*hrxn1 - J*Vfc;
+
+Flow = Flow2;
+
+
+T = Flow.T;
+Flow.T = 298;
+h2 = enthalpy(Flow);
+Flow.T = T;
+
+delh = (h2-h1-(RFC*h.O2/2));
+
+QFuelCell = QOxidation + 1000*Qindirect + 1000*sum(Qdirect);
+PFuelCell = J*Vfc;<span class="comment">%power in watts/cm^2</span>
+CellEff = PFuelCell/(-delh);
+OxiEff = PFuelCell/(-RFC*hrxn1);
+<span class="keyword">if</span> QFuelCell &lt; 0
+    CellEff = PFuelCell/(-delh-QFuelCell);
+    OxiEff = PFuelCell/(-RFC*hrxn1-QFuelCell);
+<span class="keyword">end</span>
+
+
+<span class="keyword">if</span> bDisp == 1
+    NX = (1:n)/n;
+
+    figure(101)
+    plot(NX,n*i,<span class="string">'LineWidth'</span>,2);
+    xlabel(<span class="string">'Normalized Position'</span>);
+    ylabel(<span class="string">'Current Density (A/cm^2)'</span>);
+
+    nH2 = H2./(H2+H2O+CO+CO2+CH4+C);
+    nH2O = H2O./(H2+H2O+CO+CO2+CH4+C);
+    nCO = CO./(H2+H2O+CO+CO2+CH4+C);
+    nCO2 = CO2./(H2+H2O+CO+CO2+CH4+C);
+    nCH4 = CH4./(H2+H2O+CO+CO2+CH4+C);
+    nC = C./(H2+H2O+CO+CO2+CH4+C);
+
+    figure(102)
+    plot(NX,nH2O,<span class="string">'LineWidth'</span>,2);
+    hold <span class="string">on</span>
+    plot(NX,nH2,<span class="string">'LineWidth'</span>,2);
+    plot(NX,nCO,<span class="string">'LineWidth'</span>,2);
+    plot(NX,nCO2,<span class="string">'LineWidth'</span>,2);
+    plot(NX,nCH4,<span class="string">'LineWidth'</span>,2);
+    plot(NX,nC,<span class="string">'LineWidth'</span>,2);
+    hold <span class="string">off</span>
+    xlabel(<span class="string">'Normalized Position'</span>);
+    ylabel(<span class="string">'Molar Fraction'</span>);
+    legend(<span class="string">'H2O'</span>,<span class="string">'H2'</span>,<span class="string">'CO'</span>,<span class="string">'CO2'</span>,<span class="string">'CH4'</span>,<span class="string">'C'</span>);
+    ylim([0 max(nH2O)+0.1]);
+<span class="keyword">end</span>
+<span class="keyword">end</span>
+
+<span class="keyword">function</span> [Flow] = FuelCellInitialize(Flow)
+<span class="keyword">if</span> ~isfield(Flow,<span class="string">'CO'</span>)
+    Flow.CO = 0;
+<span class="keyword">end</span>
+<span class="keyword">if</span> ~isfield(Flow,<span class="string">'CO2'</span>)
+    Flow.CO2 = 0;
+<span class="keyword">end</span>
+<span class="keyword">if</span> ~isfield(Flow,<span class="string">'CH4'</span>)
+    Flow.CH4 = 0;
+<span class="keyword">end</span>
+<span class="keyword">if</span> ~isfield(Flow,<span class="string">'H2O'</span>)
+    Flow.H2O = 0;
+<span class="keyword">end</span>
+<span class="keyword">if</span> ~isfield(Flow,<span class="string">'H2'</span>)
+    Flow.H2 = 0;
+<span class="keyword">end</span>
+<span class="keyword">if</span> ~isfield(Flow,<span class="string">'C'</span>)
+    Flow.C = 0;
+<span class="keyword">end</span>
+
+<span class="keyword">end</span>
+</pre><pre class="codeoutput error">Not enough input arguments.
+
+Error in FuelCell (line 9)
+[Flow] = FuelCellInitialize(Flow);
+</pre><p class="footer"><br><a href="http://www.mathworks.com/products/matlab/">Published with MATLAB&reg; R2017a</a><br></p></div><!--
+##### SOURCE BEGIN #####
+function [ Flow,Oxy,PFuelCell, QFuelCell, Vfc, J,CellEff,OxiEff,ErrorFlag ] = FuelCell( Flow, P,FuelUtilization,bDisp)
+Ru = 8.3145;
+F = 96485.332;%faraday constant C/mol
+ASR = 0.21 + 0.1;%account for resistance increases from stack
+Hchannel = 1e-3;
+Thickness = 50e-6;
+
+
+[Flow] = FuelCellInitialize(Flow);
+
+J = (Flow.CH4*4+Flow.CO+Flow.H2)*FuelUtilization*2*F;
+Oxy.T = Flow.T;
+Oxy.O2 = J/(4*F);%1 O for each H2 molecule, 2O per O2, 2 e- per O.
+
+n = 100;
+T = Flow.T;
+Flow.T = 298;
+h1 = enthalpy(Flow);
+Flow.T = T;
+
+[Flow,Qindirect] = ChemicalEquilibrium(Flow,P/100);
+
+i = J*ones(1,n)/n;%total current in each differential area
+
+ErrorFlag = 0;
+check = 0;
+count = 0;
+while check == 0
+    Flow2 = Flow;
+    count = count + 1;
+    for k = 1:n
+        H2(k) = Flow2.H2;
+        H2O(k) = Flow2.H2O;
+        CO(k) = Flow2.CO;
+        CO2(k) = Flow2.CO2;
+        CH4(k) = Flow2.CH4;
+        C(k) = Flow2.C;
+        [D] = DiffusionCoefficient(Flow2,P);
+        
+        X.H2 = Flow2.H2/NetFlow(Flow2);
+        X.H2O = Flow2.H2O/NetFlow(Flow2);
+        X.O2 = 1;
+        X.T = Flow2.T;
+        
+        [E0,VNernst] = NernstVoltage(X,P);
+        
+        CurrentDensity = i(k)*n;
+         
+        
+        Xs.H2 = X.H2 - Ru*Flow.T*10^4*CurrentDensity*Hchannel/(8*F*(1000*P)*D.H2);
+        Xs.H2O = X.H2O + Ru*Flow.T*10^4*CurrentDensity*Hchannel/(8*F*(1000*P)*D.H2O);
+        Xs.O2 = 1 - Ru*Flow.T*10^4*CurrentDensity*Hchannel/(8*F*(1000*P)*D.O2);
+        
+        Xtpb.H2 = Xs.H2 - Ru*Flow.T*10^4*CurrentDensity*Thickness/(2*F*(1000*P)*D.H2Eff);
+        Xtpb.H2O = Xs.H2O + Ru*Flow.T*10^4*CurrentDensity*Thickness/(2*F*(1000*P)*D.H2OEff);
+        Xtpb.O2 = Xs.O2 - Ru*Flow.T*10^4*CurrentDensity*Thickness/(4*F*(1000*P)*D.O2Eff);
+
+        VDiffusionAnode = -(Ru*Flow.T/(2*F))*log((X.H2O*Xtpb.H2)/(Xtpb.H2O*X.H2));
+        VDiffusionCathode = (Ru*Flow.T/(2*F))*log(X.O2/Xtpb.O2);
+        Vdiff(k) = VDiffusionAnode+VDiffusionCathode;
+        VOhm = CurrentDensity*ASR;
+        
+        Flow2.H2 = Flow2.H2 - i(k)/(2*F);
+        Flow2.H2O = Flow2.H2O + i(k)/(2*F);
+        [Flow2,Qdirect(k)] = ChemicalEquilibrium(Flow2,P/100);
+       
+        Voltage(k) = E0 + VNernst - VOhm - VDiffusionAnode - VDiffusionCathode;
+    end
+    error = (Voltage - mean(Voltage))/(ASR);
+    i = i.*(1+error);
+    i = i*(J/sum(i));
+    if max(abs(Voltage-mean(Voltage)))<1e-5 || count > 10000
+        check = 1;
+        if max(abs(Voltage-mean(Voltage)))>1e-5
+            ErrorFlag = 1;
+        end
+    end
+    if isnan(Voltage(1))
+        ErrorFlag = 1;
+        check = 1;
+    end
+end
+Vfc = mean(Voltage);
+
+h = enthalpy(298);
+hrxn1 = h.H2O-h.H2-h.O2/2; %H2 + O2/2 REPLACE_WITH_DASH_DASH>  H2O, ion transfer
+hrxn2 = h.CO2+h.H2-h.CO-h.H2O; %CO + H20 REPLACE_WITH_DASH_DASH> CO2 + H2, Water Gas Shift
+hrxn3 = 3*h.H2+h.CO-h.CH4-h.H2O; %CH4+H2O REPLACE_WITH_DASH_DASH> CO + 3H2, Methane reforming
+
+RFC = J/(2*F);
+QOxidation = -RFC*hrxn1 - J*Vfc;
+
+Flow = Flow2;
+
+
+T = Flow.T;
+Flow.T = 298;
+h2 = enthalpy(Flow);
+Flow.T = T;
+
+delh = (h2-h1-(RFC*h.O2/2));
+
+QFuelCell = QOxidation + 1000*Qindirect + 1000*sum(Qdirect);
+PFuelCell = J*Vfc;%power in watts/cm^2
+CellEff = PFuelCell/(-delh);
+OxiEff = PFuelCell/(-RFC*hrxn1);
+if QFuelCell < 0
+    CellEff = PFuelCell/(-delh-QFuelCell);
+    OxiEff = PFuelCell/(-RFC*hrxn1-QFuelCell);
+end
+
+
+if bDisp == 1
+    NX = (1:n)/n;
+
+    figure(101)
+    plot(NX,n*i,'LineWidth',2);
+    xlabel('Normalized Position');
+    ylabel('Current Density (A/cm^2)');
+
+    nH2 = H2./(H2+H2O+CO+CO2+CH4+C);
+    nH2O = H2O./(H2+H2O+CO+CO2+CH4+C);
+    nCO = CO./(H2+H2O+CO+CO2+CH4+C);
+    nCO2 = CO2./(H2+H2O+CO+CO2+CH4+C);
+    nCH4 = CH4./(H2+H2O+CO+CO2+CH4+C);
+    nC = C./(H2+H2O+CO+CO2+CH4+C);
+
+    figure(102)
+    plot(NX,nH2O,'LineWidth',2);
+    hold on
+    plot(NX,nH2,'LineWidth',2);
+    plot(NX,nCO,'LineWidth',2);
+    plot(NX,nCO2,'LineWidth',2);
+    plot(NX,nCH4,'LineWidth',2);
+    plot(NX,nC,'LineWidth',2);
+    hold off
+    xlabel('Normalized Position');
+    ylabel('Molar Fraction');
+    legend('H2O','H2','CO','CO2','CH4','C');
+    ylim([0 max(nH2O)+0.1]);
+end
+end
+
+function [Flow] = FuelCellInitialize(Flow)
+if ~isfield(Flow,'CO')
+    Flow.CO = 0;
+end
+if ~isfield(Flow,'CO2')
+    Flow.CO2 = 0;
+end
+if ~isfield(Flow,'CH4')
+    Flow.CH4 = 0;
+end
+if ~isfield(Flow,'H2O')
+    Flow.H2O = 0;
+end
+if ~isfield(Flow,'H2')
+    Flow.H2 = 0;
+end
+if ~isfield(Flow,'C')
+    Flow.C = 0;
+end
+
+end
+##### SOURCE END #####
+--></body></html>
